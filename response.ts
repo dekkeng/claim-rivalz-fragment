@@ -1,4 +1,4 @@
-﻿export interface Root {
+﻿export interface NodeInfo {
     status: number
     message: string
     data: Data

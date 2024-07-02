@@ -1,8 +1,8 @@
-import { ethers } from "ethers";
+import { ethers, isError } from "ethers";
 import dotenv from "dotenv";
-import Web3 from "web3";
 import axios, { AxiosError } from "axios";
-import type { Root } from "./response";
+import type { NodeInfo } from "./response";
+import type { Fragments } from "./responseFragment";
 
 dotenv.config();
 
@@ -10,24 +10,17 @@ const {
   PROVIDER_URL: providerUrl,
   PRIVATE_KEY: privateKey,
   CONTRACT_ADDRESS: contractAddress,
+  CONTRACT_RIZ: contractAddressRiz,
 } = process.env;
-if (!providerUrl || !privateKey || !contractAddress) {
+if (!providerUrl || !privateKey || !contractAddress || !contractAddressRiz) {
   throw new Error(
     "Please set PROVIDER_URL, PRIVATE_KEY, CONTRACT_ADDRESS in the .env file."
   );
 }
 
 const provider = new ethers.JsonRpcProvider(providerUrl);
-const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
 const wallet = new ethers.Wallet(privateKey, provider);
 const contractABI = [
-  {
-    inputs: [],
-    name: "canClaim",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
   {
     inputs: [],
     name: "claim",
@@ -37,6 +30,11 @@ const contractABI = [
   },
 ];
 const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+const contractRiz = new ethers.Contract(
+  contractAddressRiz,
+  contractABI,
+  wallet
+);
 
 async function initiateSignatureRequest(): Promise<object> {
   try {
@@ -55,15 +53,21 @@ async function initiateSignatureRequest(): Promise<object> {
   }
 }
 
-async function canClaim() {
-  try {
-    console.log("Checking if a claim is allowed...");
-    return await contract.canClaim();
-  } catch (error) {
-    console.error("Error checking claim status:", error);
-    return false;
-  }
+async function checkClaimAble() {
+  const data = `0x89885049000000000000000000000000${wallet.address.replace(
+    "0x",
+    ""
+  )}`;
+  const response = await provider.call({
+    from: `0x24edfad36015420a84573684644f6dc74f0ba8c5`,
+    to: contractAddress,
+    data,
+  });
+  const responseInt = parseInt(response);
+  console.log({ responseInt });
+  return responseInt;
 }
+
 async function loginWithWallet(data: object): Promise<string> {
   try {
     const url = `https://be.rivalz.ai/api-v1/auth/login-with-wallet`;
@@ -82,7 +86,20 @@ async function loginWithWallet(data: object): Promise<string> {
   }
 }
 
-async function findByWalletAddress(token: string): Promise<Root> {
+async function getScore(): Promise<Fragments> {
+  try {
+    const url = `https://api.rivalz.ai/fragment/v1/fragment/collection/${wallet.address}`;
+    const headers = {
+      accept: "application/json",
+    };
+    const response = await axios.get(url, { headers });
+    return response.data as Fragments;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function findByWalletAddress(token: string): Promise<NodeInfo> {
   const url = `https://be.rivalz.ai/api-v1/orbit-db/find-by-wallet-address/${wallet.address}`;
   const headers = {
     accept: "application/json",
@@ -90,7 +107,7 @@ async function findByWalletAddress(token: string): Promise<Root> {
   };
   try {
     const response = await axios.get(url, { headers });
-    return response.data as Root;
+    return response.data as NodeInfo;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       console.error("Error:", error.message);
@@ -99,30 +116,49 @@ async function findByWalletAddress(token: string): Promise<Root> {
   }
 }
 
+function getRandomNonce(min: number, max: number): string {
+  const nonce = Math.floor(Math.random() * (max - min + 1)) + min;
+  return nonce.toString().padStart(2, "0"); // Ensures the nonce is always two digits
+}
+
+async function getRiz() {
+  try {
+    console.log(`add Riz for claim...`);
+    const tx = await contractRiz.claim();
+    console.log("Transaction hash:", tx.hash);
+    const tx_complete = await tx.wait();
+    console.log("Transaction confirmed:", tx_complete.hash);
+  } catch (error) {}
+}
+
 async function callClaim() {
   try {
-    const allowed = await canClaim();
-    if (!allowed) {
-      console.log("Claim is not allowed at the moment.");
-      return;
-    }
-
     console.log("Calling claim function...");
     const tx = await contract.claim();
     console.log("Transaction hash:", tx.hash);
-    await tx.wait();
-    console.log("Transaction confirmed:", tx);
+    const tx_complete = await tx.wait();
+    console.log("Transaction confirmed:", tx_complete.hash);
+    return tx_complete.hash;
   } catch (error) {
-    console.error("Error calling claim function:", error);
+    throw error;
   }
 }
 
-//callClaim();
-try {
-  const params = await initiateSignatureRequest();
-  const accessToken = await loginWithWallet(params);
-  const response = await findByWalletAddress(accessToken);
-  console.log(response);
-} catch (error) {
-  console.error("Error during the process:", error.message);
+async function executeProcess() {
+  try {
+    while ((await checkClaimAble()) > 0) {
+      try {
+        const tx_hash = await callClaim();
+      } catch (error) {
+        console.error("Error calling claim function:");
+        if (isError(error, "CALL_EXCEPTION")) {
+          console.log({ error });
+        }
+      }
+    }
+  } catch (error) {
+    console.log(error);
+  }
 }
+
+executeProcess();
