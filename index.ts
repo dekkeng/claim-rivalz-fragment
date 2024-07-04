@@ -63,9 +63,9 @@ async function checkClaimAble() {
     to: contractAddress,
     data,
   });
-  const responseInt = parseInt(response);
-  console.log({ responseInt });
-  return responseInt;
+  const fragmentCount = parseInt(response);
+  console.log({ fragmentCount });
+  return fragmentCount;
 }
 
 async function loginWithWallet(data: object): Promise<string> {
