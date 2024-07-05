@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import axios, { AxiosError } from "axios";
 import type { NodeInfo } from "./response";
 import type { Fragments } from "./responseFragment";
+import { exit } from "process";
 
 dotenv.config();
 
@@ -54,18 +55,22 @@ async function initiateSignatureRequest(): Promise<object> {
 }
 
 async function checkClaimAble() {
-  const data = `0x89885049000000000000000000000000${wallet.address.replace(
-    "0x",
-    ""
-  )}`;
-  const response = await provider.call({
-    from: `0x24edfad36015420a84573684644f6dc74f0ba8c5`,
-    to: contractAddress,
-    data,
-  });
-  const fragmentCount = parseInt(response);
-  console.log({ fragmentCount });
-  return fragmentCount;
+  try {
+    const data = `0x89885049000000000000000000000000${wallet.address.replace(
+      "0x",
+      ""
+    )}`;
+    const response = await provider.call({
+      from: `0x24edfad36015420a84573684644f6dc74f0ba8c5`,
+      to: contractAddress,
+      data,
+    });
+    const fragmentCount = parseInt(response);
+    console.log({ fragmentCount });
+    return fragmentCount;
+  } catch (error) {
+    throw error;
+  }
 }
 
 async function loginWithWallet(data: object): Promise<string> {
@@ -158,6 +163,9 @@ async function executeProcess() {
     }
   } catch (error) {
     console.log(error);
+    if (isError(error, "SERVER_ERROR")) {
+      exit(1);
+    }
   }
 }
 
