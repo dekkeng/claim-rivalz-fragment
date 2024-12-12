@@ -6,7 +6,7 @@
 ```bash
 apt update && apt upgrade -y
 apt install -y unzip git screen
-git clone https://github.com/nuttanont/claim-rivalz-fragment.git
+git clone https://github.com/dekkeng/claim-rivalz-fragment.git
 cd claim-rivalz-fragment
 cp .env.test  .env
 ```
